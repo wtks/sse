@@ -13,11 +13,12 @@ var (
 
 // Streamer SSE Streamer
 type Streamer struct {
-	clients map[string]map[ID]*Client
-	options Options
-	stopped bool
-	mutex   sync.RWMutex
-	wg      sync.WaitGroup
+	userMap   map[string]map[ID]*Client
+	clientMap map[ID]*Client
+	options   Options
+	stopped   bool
+	mutex     sync.RWMutex
+	wg        sync.WaitGroup
 }
 
 type Client struct {
@@ -33,9 +34,10 @@ type payload struct {
 
 func NewStreamer(options Options) *Streamer {
 	streamer := &Streamer{
-		clients: map[string]map[ID]*Client{},
-		options: options,
-		stopped: true,
+		userMap:   map[string]map[ID]*Client{},
+		clientMap: map[ID]*Client{},
+		options:   options,
+		stopped:   true,
 	}
 	return streamer
 }
@@ -54,12 +56,12 @@ func (s *Streamer) Stop() {
 	s.wg.Wait()
 
 	s.mutex.Lock()
-	for _, v := range s.clients {
+	for _, v := range s.userMap {
 		for _, c := range v {
 			close(c.send)
 		}
 	}
-	s.clients = map[string]map[ID]*Client{}
+	s.userMap = map[string]map[ID]*Client{}
 	s.mutex.Unlock()
 }
 
@@ -79,6 +81,14 @@ func (s *Streamer) MulticastJson(event string, data interface{}, users []string)
 	return s.Multicast(event, string(json), users)
 }
 
+func (s *Streamer) UnicastJson(event string, data interface{}, clientID ID) error {
+	json, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return s.Unicast(event, string(json), clientID)
+}
+
 func (s *Streamer) Broadcast(event string, data string) error {
 	targets := make([]*Client, 0)
 
@@ -88,7 +98,7 @@ func (s *Streamer) Broadcast(event string, data string) error {
 		return ErrStreamerStopped
 	}
 
-	for _, v := range s.clients {
+	for _, v := range s.userMap {
 		for _, c := range v {
 			targets = append(targets, c)
 		}
@@ -113,10 +123,29 @@ func (s *Streamer) Multicast(event string, data string, users []string) error {
 		if ok := done[v]; ok {
 			continue
 		}
-		for _, c := range s.clients[v] {
+		for _, c := range s.userMap[v] {
 			targets = append(targets, c)
 		}
 		done[v] = true
+	}
+	s.mutex.RUnlock()
+
+	s.send(targets, makePayload(event, data))
+	return nil
+}
+
+func (s *Streamer) Unicast(event string, data string, clientID ID) error {
+	targets := make([]*Client, 1)
+
+	s.mutex.RLock()
+	if s.stopped {
+		s.mutex.RUnlock()
+		return ErrStreamerStopped
+	}
+
+	c, ok := s.clientMap[clientID]
+	if ok {
+		targets[0] = c
 	}
 	s.mutex.RUnlock()
 
@@ -144,20 +173,22 @@ func (s *Streamer) addClient(c *Client) error {
 		return ErrStreamerStopped
 	}
 
-	if arr, ok := s.clients[c.userKey]; ok {
+	if arr, ok := s.userMap[c.userKey]; ok {
 		arr[c.connectionID] = c
 	} else {
 		new := make(map[ID]*Client)
 		new[c.connectionID] = c
-		s.clients[c.userKey] = new
+		s.userMap[c.userKey] = new
 	}
+	s.clientMap[c.connectionID] = c
 	return nil
 }
 
 func (s *Streamer) removeClient(c *Client) error {
 	s.mutex.Lock()
-	arr, _ := s.clients[c.userKey]
+	arr, _ := s.userMap[c.userKey]
 	delete(arr, c.connectionID)
+	delete(s.clientMap, c.connectionID)
 	s.mutex.Unlock()
 	return nil
 }
