@@ -201,6 +201,12 @@ func (s *Streamer) send(targets []*Client, payload *payload) {
 	s.wg.Done()
 }
 
+func (s *Streamer) ConnectionCount() int {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return len(s.clientMap)
+}
+
 func (c *Client) GetUserKey() string {
 	return c.userKey
 }

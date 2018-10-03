@@ -14,7 +14,7 @@ func (s *Streamer) SetHTTPHeaders(rw http.ResponseWriter) {
 	}
 }
 
-func (s *Streamer) ClientSendLoop(client *Client, rw http.ResponseWriter, r *http.Request) {
+func (s *Streamer) Dispatcher(client *Client, rw http.ResponseWriter, r *http.Request) {
 	fl, ok := rw.(http.Flusher)
 	if !ok {
 		rw.WriteHeader(http.StatusNotImplemented) // unsupported
@@ -91,5 +91,5 @@ func (s *Streamer) Handler(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	fl.Flush()
 
-	s.ClientSendLoop(client, rw, r)
+	s.Dispatcher(client, rw, r)
 }
