@@ -61,7 +61,7 @@ func (s *Streamer) Dispatcher(client *Client, rw http.ResponseWriter, r *http.Re
 	}
 }
 
-func (s *Streamer) Handler(rw http.ResponseWriter, r *http.Request) {
+func (s *Streamer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	fl, ok := rw.(http.Flusher)
 	if !ok {
 		rw.WriteHeader(http.StatusNotImplemented) // unsupported
